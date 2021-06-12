@@ -71,9 +71,9 @@ class LV_CAMUS_Dataset(Dataset):
         self.get_dataset_info()
         self.calculate_stat()
     
-    def get_num_all_frames(self):
+    def get_num_all_frames(self, sequence=False):
         num_frames = 0
-        
+              
         for patient in np.sort(os.listdir(self.dataset_path)):
             patient_files = os.listdir(os.path.join(self.dataset_path, patient))
             if not patient_files:

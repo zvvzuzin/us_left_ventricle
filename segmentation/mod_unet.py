@@ -1,5 +1,3 @@
-""" Parts of the U-Net model """
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -35,10 +33,10 @@ class UNetDown(nn.Module):
         super(UNetDown, self).__init__()
         layers = [
             nn.Conv2d(in_size, out_size, kernel_size=3, padding=1),
-            nn.BatchNorm2d(in_size, momentum=0.8),
+            nn.BatchNorm2d(out_size, momentum=0.8),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_size, out_size, kernel_size=3, padding=1),
-            nn.BatchNorm2d(in_size, momentum=0.8),
+            nn.BatchNorm2d(out_size, momentum=0.8),
             nn.ReLU(inplace=True),
         ]
         
@@ -55,7 +53,7 @@ class UNetDown(nn.Module):
         layers = [        
             nn.Conv2d(out_size, out_size, 4, 2, 1, bias=True),
             nn.BatchNorm2d(out_size, momentum=0.8),
-            layers.append(nn.ReLU(inplace=True))
+            nn.ReLU(inplace=True),
         ]
         self.down = nn.Sequential(*layers)
         for m in self.down:
@@ -81,16 +79,26 @@ class UNetUp(nn.Module):
             nn.Conv2d(out_size, out_size, kernel_size=3, padding=1),
             nn.BatchNorm2d(out_size, momentum=0.8),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_size, 4 * out_size, 3, 1, 1),
-            nn.BatchNorm2d(4 * out_size, momentum=0.8),
-            nn.ReLU(inplace=True),
-            nn.PixelShuffle(2),
         ]
         if dropout:
             layers.append(nn.Dropout(dropout))
 
-        self.model = nn.Sequential(*layers)
-        for m in self.model:
+        self.block = nn.Sequential(*layers)
+        for m in self.block:
+            if isinstance(m, nn.Conv2d):
+                torch.nn.init.xavier_uniform_(m.weight)
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+                
+        layers = [
+#             nn.Conv2d(in_size, 2 * in_size, 3, 1, 1),
+#             nn.BatchNorm2d(4 * out_size, momentum=0.8),
+#             nn.ReLU(inplace=True),
+            nn.PixelShuffle(2),
+        ]
+        self.up = nn.Sequential(*layers)
+        for m in self.up:
             if isinstance(m, nn.Conv2d):
                 torch.nn.init.xavier_uniform_(m.weight)
             elif isinstance(m, nn.BatchNorm2d):
@@ -99,9 +107,9 @@ class UNetUp(nn.Module):
 
 
     def forward(self, x, skip_input):
+        x = self.up(x)
         x = torch.cat((x, skip_input), 1)
-        x = self.model(x)
-
+        x = self.block(x)
         return x
 
 
@@ -112,41 +120,39 @@ class UNet(nn.Module):
         self.down1 = UNetDown(1, 32)
         self.down2 = UNetDown(32, 64)
         self.down3 = UNetDown(64, 128)  # , dropout=0.5)
-        self.down4 = UNetDown(256, 512)  # , dropout=0.5)
-        self.down5 = UNetDown(512, 1024)  # , dropout=0.5)
-        self.down6 = UNetDown(1024, 1024)  # , dropout=0.5)
+        self.down4 = UNetDown(128, 256)  # , dropout=0.5)
+        self.down5 = UNetDown(256, 512)  # , dropout=0.5)
+        self.down6 = UNetDown(512, 1024)  # , dropout=0.5)
 #         self.down8 = UNetDown(1024, 1024, dropout=0.5)
         #
         # self.up1 = UNetUp(1024, 1024, dropout=0.5)
-        self.up6 = UNetUp(1024, 1024)  # , dropout=0.5)
-        self.up5 = UNetUp(2*1024, 1024)  # , dropout=0.5)
-        self.up4 = UNetUp(2*1024, 1024)  # , dropout=0.5)
-        self.up3 = UNetUp(2*1024, 256)
-        self.up2 = UNetUp(512, 128)
-        self.up1 = UNetUp(256, 64)
+#         self.up6 = UNetUp(1024, 512)  # , dropout=0.5)
+        self.up5 = UNetUp(512 + 1024 // 4, 512)  # , dropout=0.5)
+        self.up4 = UNetUp(256 + 512 // 4, 256)  # , dropout=0.5)
+        self.up3 = UNetUp(128 + 256 // 4, 128)
+        self.up2 = UNetUp(64 + 128 // 4, 64)
+        self.up1 = UNetUp(32 + 64 // 4, 32)
 
         self.final = nn.Sequential(
-            nn.Conv2d(128, 4 * out_channels, 3, 1, 1),
-            nn.PixelShuffle(2),
+            nn.Conv2d(32, 1, kernel_size=1, stride=1, padding=0),
             # nn.ConvTranspose2d(128, out_channels, 4, 2, 1),
             # nn.Conv2d(out_channels, out_channels, 3, 1, 1),
         )
 
     def forward(self, x):
         # U-Net generator with skip connections from encoder to decoder
-        d1 = self.down1(x)
-        d2 = self.down2(d1)
-        d3 = self.down3(d2)
-        d4 = self.down4(d3)
-        d5 = self.down5(d4)
-        d6 = self.down6(d5)
-        d7 = self.down7(d6)
+        d1, skip_1 = self.down1(x)
+        d2, skip_2 = self.down2(d1)
+        d3, skip_3 = self.down3(d2)
+        d4, skip_4 = self.down4(d3)
+        d5, skip_5 = self.down5(d4)
+        _, d6 = self.down6(d5)
+#         d7, _ = self.down7(d6)
 
-        u1 = self.up1(d7, d6)
-        u2 = self.up2(u2, d5)
-        u3 = self.up3(u3, d4)
-        u4 = self.up4(u4, d3)
-        u5 = self.up5(u5, d2)
-        u6 = self.up6(u6, d1)
+        u5 = self.up5(d6, skip_5)
+        u4 = self.up4(u5, skip_4)
+        u3 = self.up3(u4, skip_3)
+        u2 = self.up2(u3, skip_2)
+        u1 = self.up1(u2, skip_1)
 
-        return self.final(u6)
+        return self.final(u1)

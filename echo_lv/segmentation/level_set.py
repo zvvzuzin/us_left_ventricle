@@ -1,14 +1,9 @@
 import numpy as np
 from scipy.ndimage import filters
 from skimage.measure import find_contours
-# import scipy.signal
-
 
 class GAC():
     def __init__(self, msk, w = (0.7, 0.2, 0.1), sigma=2, iters = 500, C = 10, v= 1., dt = 1.):
-        '''
-        w = (smoothing, balloon, attachment)
-        '''
         self.cur_iter = 0
         self.final_iter = iters
         self.msk = msk
@@ -29,7 +24,6 @@ class GAC():
         phi = - np.ones(msk.shape[:2])
         y, x = np.where(msk != 0)
         centr_x, centr_y = np.mean(x), np.mean(y)
-#         phi[int(centr_y - 4*init_radius):int(centr_y + 4*init_radius + 1), int(centr_x - init_radius):int(centr_x + init_radius + 1)] = 1
         phi[int(centr_y - init_radius):int(centr_y + init_radius), int(centr_x - init_radius):int(centr_x + init_radius)] = mask_area
         return phi
         
@@ -72,7 +66,6 @@ class GAC():
         if it is not None:
             self.final_iter = it
         
-        img = img - np.mean(img)
         img = filters.gaussian_filter(img, sigma=self.sigma)
         g = self.velocity(img)
         dg = self.gradient(g)
@@ -93,18 +86,11 @@ class GAC():
             self.phi = self.phi + self.dt * dphi_t
             
         self.cur_iter = self.final_iter    
-#         c = np.array(find_contours(phi, 0)[0], dtype=int)
-#         print(c.shape)
-#         msk = np.zeros(self.shape)
-#         msk[c[:,0], c[:,1]] = 1
-        return self.phi > 0
+        return self.phi >= 0
     
 
 class Level_Set():
     def __init__(self, msk, sigma=2, iters = 500, C = 10, v= 1., dt = 1.):
-        '''
-        w = (smoothing, balloon, attachment)
-        '''
         self.cur_iter = 0
         self.final_iter = iters
         self.msk = msk
@@ -141,7 +127,6 @@ class Level_Set():
         return 1. / (1. + self.C * self.norm(self.gradient(img)))
     
     
-    
     def predict(self, img, contin=False, it=None):
         if not contin:
             self.cur_iter = 0
@@ -150,7 +135,6 @@ class Level_Set():
         if it is not None:
             self.final_iter = it
         
-        img = img - np.mean(img)
         img = filters.gaussian_filter(img, sigma=self.sigma)
         g = self.velocity(img)
         
@@ -164,7 +148,4 @@ class Level_Set():
             self.phi = self.phi + self.dt * dphi_t
         
         self.cur_iter = self.final_iter    
-#         c = np.array(find_contours(self.phi, 0)[0], dtype=int)
-#         msk = np.zeros(self.shape)
-#         msk[c[:,0], c[:,1]] = 1
-        return self.phi > 0
+        return self.phi >= 0

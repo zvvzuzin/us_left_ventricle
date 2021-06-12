@@ -332,9 +332,6 @@ def interpolate_contour(x, y, with_base=True, k=2):
     else:
         full_x_base = []
         full_y_base = []
-
-    
-    
     return np.concatenate((full_x, full_x_base)).astype(int), np.concatenate((full_y, full_y_base)).astype(int)
 
 
@@ -377,6 +374,7 @@ def cont2area(im_cont):
     y, x = np.where(im_area != 0)
     pxl = (int(np.mean(y)), int(np.mean(x)))
     Q = [pxl]
+    inside_contour = True
     while Q:
         Q_ns = []
         pt = Q.pop()
@@ -386,24 +384,38 @@ def cont2area(im_cont):
         w = -1
         pt_e = (pt[0], pt[1]+e)
         pt_w = (pt[0], pt[1]+w)
+        if pt_e[1] == im_area.shape[1] or pt_w[1] < 0:
+            inside_contour = False
+            continue
         while im_area[pt_e] == 0:
             Q_ns.append(pt_e)
             e += 1
             pt_e = (pt[0], pt[1]+e)
+            if pt_e[1] == im_area.shape[1]:
+                inside_contour = False
+                break
         while im_area[pt_w] == 0:
             Q_ns.append(pt_w)
             w -= 1
             pt_w = (pt[0], pt[1]+w)
+            if pt_w[1] < 0:
+                inside_contour = False
+                break
         while Q_ns:
             pt_ns = Q_ns.pop()
             im_area[pt_ns] = fill
-            pt_n = (pt_ns[0]+1, pt_ns[1])
-            pt_s = (pt_ns[0]-1, pt_ns[1])
+            pt_n = (pt_ns[0]-1, pt_ns[1])
+            pt_s = (pt_ns[0]+1, pt_ns[1])
+            if pt_s[0] == im_area.shape[0] or pt_n[0] < 0:
+                inside_contour = False
+                break
             if im_area[pt_n] == 0:
                 Q.append(pt_n)
             if im_area[pt_s] == 0:
                 Q.append(pt_s)
-    return im_area
+    if inside_contour:
+        return im_area
+    return abs(im_area - fill)
 ###
 
 

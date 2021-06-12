@@ -3,6 +3,7 @@ import numpy as np
 from tqdm import tqdm
 import pandas as pd
 import cv2
+from skimage.transform import resize
 
 class LV_EKB_Dataset:
     
@@ -10,7 +11,8 @@ class LV_EKB_Dataset:
                  dataset_path='/home/vasily/datasets/us_ekb', 
                  task='segmentation',
                  img_size=None,
-                 patient_cat = {'Norma_old', 'Norma', 'Pathology', 'DKMP'},
+                 patient_cat = {'Norma_Old', 'Norma', 'Pathology_Old', 'DKMP'},
+                 only_first_frames = False,
                  random_state=17, 
                  train_ratio=None,
                  valid_ratio=None, 
@@ -25,6 +27,7 @@ class LV_EKB_Dataset:
         np.random.seed(random_state)
         self._dataset_path = dataset_path
         self._task = task
+        self.categories = patient_cat
         self.lv_crop_ratio = lv_crop_ratio
         self.lv_crop_aspect_ratio = lv_crop_aspect_ratio
         self.folds = None
@@ -32,6 +35,7 @@ class LV_EKB_Dataset:
         self.img_size = img_size
         self.random_state = random_state
         self.normalize = normalize
+        self.only_first_frames = only_first_frames
         
         if self.folds:
             self.num_folds = max(0, folds)
@@ -57,14 +61,6 @@ class LV_EKB_Dataset:
         
         if lv_crop_ratio or lv_crop_aspect_ratio:
             self.add_cropping_info(info, lv_crop_ratio=lv_crop_ratio, lv_crop_aspect_ratio=lv_crop_aspect_ratio)
-        
-#         self.info = self.split_data(info)
-#         self._fit_data_info()
-        # Spliting data on train, valid, test subsets
-#         self._indexes_split_data()
-        
-#         num_train, num_test = train_test_split(np.arange(len(name_patients)), test_size=conf.SPLIT, random_state=17)
-    
     
     
     def _chech_catalogues(self, path_to_dataset):
@@ -72,7 +68,7 @@ class LV_EKB_Dataset:
         path_to_images = os.path.join(path_to_dataset, 'images')
         path_to_masks = os.path.join(path_to_dataset, 'labels')
         for it, ((path_img, dirs_img, files_img), (path_msk, dirs_msk, files_msk)) in enumerate(zip(os.walk(path_to_images), os.walk(path_to_masks))):
-            if dirs_img != dirs_msk and files_img != files_msk:
+            if dirs_img != dirs_msk or files_img != files_msk:
                 print('Image and masks catalogues are different!')
                 return False
         print('Dataset is correct.')
@@ -85,6 +81,10 @@ class LV_EKB_Dataset:
             self.df_patients = pd.DataFrame(columns=['patient', 'category', 'img_shape', 'num_frames'])
             
             for category in np.sort(os.listdir(os.path.join(path_to_dataset, 'images'))):
+
+                if not category in self.categories:
+                    continue
+                
                 for patient in np.sort(os.listdir(os.path.join(path_to_dataset, 'images', category))):
                     num_frame = 0
                     img_size = None
@@ -93,13 +93,10 @@ class LV_EKB_Dataset:
                     else:
                         box = None
                         
-#                     name_images = np.sort(['0' + it if len(it) == 5 else it for it in os.listdir(os.path.join(path_to_dataset, 'images', category, patient))])
-# #                     print(name_images)
-#                     name_images = [it[1:] if it[0] == '0' else it for it in name_images]
-#                     print(patient)
                     for it, obj in enumerate(np.sort(os.listdir(os.path.join(path_to_dataset, 'images', category, patient)))):
                         num_frame += 1
                         if it == 0:
+#                             try:
                             img_size = tuple(cv2.imread(os.path.join(path_to_dataset, 'images', category, patient, obj)).shape[:2])
 #                             except:
 #                                 print(os.path.join(path_to_dataset, 'images', category, patient, obj))
@@ -110,6 +107,9 @@ class LV_EKB_Dataset:
                                                                 'obj_name' : obj,
                                                                 'bbox' : box,
                                                                 }, ignore_index=True)
+                        if self.only_first_frames:
+                            break
+        
                     
                     self.df_patients = self.df_patients.append({'patient' : patient,
                                                                 'category' : category,
@@ -160,16 +160,7 @@ class LV_EKB_Dataset:
             result_info['test'] = info_test
         else:
             result_info['train'] = info
-            
-#         if self._folds:
-#             if self._folds > 1:
-#                 self.kf = KFold(n_splits=self._folds, shuffle=True, random_state=self._random_state)
-#                 self._indx_train, self._indx_valid = [], []
-#                 for indx_train, indx_valid in self.kf.split(np.arange(len(self._all_indx_train))):
-#                     self._indx_train.append(self._all_indx_train[indx_train])
-#                     self._indx_valid.append(self._all_indx_train[indx_valid])
-#             else:
-#                 self._indx_train = self._all_indx_train
+
         return result_info
 
 
@@ -263,8 +254,8 @@ class LV_EKB_Dataset:
                           max(0, obj['bbox'][1]):min(obj['img_size'][1], obj['bbox'][3])]
 
             if self.img_size:
-                img = cv2.resize(img, (self.img_size[1], self.img_size[0]), interpolation=cv2.INTER_LINEAR)
-                msk = cv2.resize(msk, (self.img_size[1], self.img_size[0]), interpolation=cv2.INTER_NEAREST)
+                img = resize(img, self.img_size, preserve_range=True, anti_aliasing=True, order=1)
+                msk = resize(msk, self.img_size, preserve_range=True, anti_aliasing=False, order=0)
             
             if self.normalize:
                 img = img / 255
@@ -293,7 +284,11 @@ class LV_EKB_Dataset:
                       max(0, obj['bbox'][1]):min(obj['img_size'][1], obj['bbox'][3])]
         
         if self.img_size:
-            img = cv2.resize(img, (self.img_size[1], self.img_size[0]), interpolation=cv2.INTER_LINEAR)
-            msk = cv2.resize(msk, (self.img_size[1], self.img_size[0]), interpolation=cv2.INTER_NEAREST)
+            img = resize(img, self.img_size, preserve_range=True, order=1)
+            msk = resize(msk, self.img_size, preserve_range=True, anti_aliasing=False, order=0)
+        
+        if self.normalize:
+            img = img / 255
+            msk = msk / 255
             
-        return img, msk
+        return np.expand_dims(img, axis=0), np.expand_dims(msk, axis=0)

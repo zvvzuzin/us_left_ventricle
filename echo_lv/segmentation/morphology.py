@@ -9,22 +9,8 @@ class Morph_segmentation:
      
     
     def fit(self, img, msk):
-#         y, x = np.where(msk != 0)
         self.gauss = cv2.blur(msk, (50,50))
-#         gauss_var = [[msk.shape[0] * 10, 0], [0, msk.shape[1] * 5]]
-#         self.center = (x.mean(), y.mean())
-#         self.gauss = multivariate_normal.pdf(np.mgrid[
-#                                         0:msk.shape[0],
-#                                         0:msk.shape[1]].reshape(2, -1).transpose(),
-#                                         mean=(self.center[1], self.center[0]),
-#                                         cov=gauss_var)
-
-#         self.gauss /= self.gauss.max()
-#         self.gauss = self.gauss.reshape((msk.shape[0], msk.shape[1]))
-#         self.gauss[y, x] = 1
-
         temp_img = self.gauss * (1 - img)
-        temp_img = (temp_img - np.min(temp_img)) / np.max(temp_img)
         lv_img = temp_img * msk
         counts, med_bins, *_ = np.histogram(lv_img[lv_img != 0].ravel(), bins=100)
 
@@ -34,7 +20,6 @@ class Morph_segmentation:
     
     def predict(self, img):
         temp_img = self.gauss * (1 - img)
-        temp_img = (temp_img - np.min(temp_img)) / np.max(temp_img)
         bw = temp_img > self.thresh
 
         ret, labels, stats, centroids = cv2.connectedComponentsWithStats((255*bw).astype(np.uint8), connectivity=4)

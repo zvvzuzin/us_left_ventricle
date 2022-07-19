@@ -1,6 +1,5 @@
 import numpy as np
 import cv2
-# import scipy.interpolate as inter
 from scipy import interpolate
 import matplotlib.pyplot as plt
 
@@ -102,7 +101,6 @@ def get_contour_points(im, base_points=None, top_point=None, space='cart', kind=
             top_point = cart2pol(top_point[0], top_point[1], cent_x, cent_y)
             
     cont_phi[cont_phi >= max(base_l_point[0], base_r_point[0])] -= 2*np.pi
-#     cont_phi, cont_rho = sort2d(cont_phi, cont_rho)
     indexes = np.argsort(cont_phi)
     cont_phi = cont_phi[indexes]
     cont_rho = cont_rho[indexes]
@@ -210,10 +208,6 @@ def get_main_points(im, space='cart'):
             index = k
             count = dict_base[k]    
     base_x, base_y = new_cont_x[index], new_cont_y[index]
-    #pol2cart(base_phi[index], 
-          #                    base_rho[index], 
-          #                    top_x, 
-          #                    top_y)
     
     base_phi, base_rho = cart2pol(base_x, 
                                   base_y, 
